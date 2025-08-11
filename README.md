@@ -63,7 +63,7 @@ action:
       title: "🛡️ New IP Banned by CrowdSec"
       message: "IP: {{ trigger.event.data.value }} for {{ trigger.event.data.duration }}. Reason: {{ trigger.event.data.scenario }}."
 mode: single
-
+```
 
 #### **Lovelace Dashboard Card**
 
@@ -80,4 +80,4 @@ content: >-
   {% else %}
     | No active decisions | | |
   {% endfor %}
-
+```
