@@ -1,0 +1,10 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Home Assistant
+.HA_VERSION
+deps/
+www/
+ip_bans.yaml
