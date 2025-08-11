@@ -1,0 +1,5 @@
+DOMAIN = "crowdsec"
+DEFAULT_PORT = 8080
+DEFAULT_SCAN_INTERVAL = 60
+CONF_SCHEME = "scheme"
+

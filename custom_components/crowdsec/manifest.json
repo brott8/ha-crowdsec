@@ -1,0 +1,12 @@
+{
+  "domain": "crowdsec",
+  "name": "CrowdSec LAPI",
+  "version": "0.1.0",
+  "documentation": "https://github.com/yourgithub/crowdsec-homeassistant",
+  "requirements": [],
+  "codeowners": ["@yourgithub"],
+  "iot_class": "local_polling",
+  "config_flow": true,
+  "integration_type": "hub"
+}
+
