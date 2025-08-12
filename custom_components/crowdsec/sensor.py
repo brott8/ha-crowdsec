@@ -3,6 +3,7 @@ import logging
 from datetime import timedelta
 from typing import Any, Dict, List
 
+from homeassistant.helpers import device_registry as dr
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
 from homeassistant import config_entries
@@ -13,18 +14,14 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .api import CrowdSecApiClient
-from .const import DOMAIN, DEFAULT_SCAN_INTERVAL
+from .const import DOMAIN, DEFAULT_SCAN_INTERVAL, EVENT_NEW_DECISION, EVENT_DECISION_REMOVED
 
 _LOGGER = logging.getLogger(__name__)
-
-# Define event types as constants
-EVENT_NEW_DECISION = "crowdsec_new_decision"
-EVENT_DECISION_REMOVED = "crowdsec_decision_expired"
 
 class CrowdSecCoordinator(DataUpdateCoordinator[List[Dict[str, Any]]]):
     """Coordinates fetching data from the CrowdSec LAPI."""
 
-    def __init__(self, hass: HomeAssistant, api_client: CrowdSecApiClient):
+    def __init__(self, hass: HomeAssistant, api_client: CrowdSecApiClient, entry: config_entries.ConfigEntry):
         """Initialize the coordinator."""
         super().__init__(
             hass,
@@ -33,10 +30,24 @@ class CrowdSecCoordinator(DataUpdateCoordinator[List[Dict[str, Any]]]):
             update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
         )
         self.api_client = api_client
+        self.entry = entry # Store the config entry
         # Store the full decision objects from the last successful update
         self._known_decisions: Dict[int, Dict[str, Any]] = {}
 
     async def _async_update_data(self) -> List[Dict[str, Any]]:
+        # Find the device associated with this config entry
+        device_registry = dr.async_get(self.hass)
+        device = device_registry.async_get_device(identifiers={(DOMAIN, self.entry.entry_id)})
+        # The device might not exist on the very first run, so we check for it.
+        if not device:
+            _LOGGER.debug("Device not yet available, skipping event firing")
+            # We still want to update data, just can't fire device-specific events yet.
+            decisions = await self.api_client.get_decisions()
+            if decisions is None:
+                raise UpdateFailed("Failed to communicate with CrowdSec LAPI.")
+            self._known_decisions = {d['id']: d for d in decisions}
+            return decisions
+
         """Fetch data from API endpoint and detect changes."""
         decisions = await self.api_client.get_decisions()
         if decisions is None:
@@ -52,6 +63,7 @@ class CrowdSecCoordinator(DataUpdateCoordinator[List[Dict[str, Any]]]):
         for dec_id in new_ids:
             new_decision = current_decisions_map[dec_id]
             _LOGGER.info("New CrowdSec decision: %s", new_decision['value'])
+            event_payload = {**new_decision, "device_id": device.id}
             self.hass.bus.async_fire(EVENT_NEW_DECISION, new_decision)
 
         # --- Detect and fire events for REMOVED decisions ---
@@ -60,6 +72,7 @@ class CrowdSecCoordinator(DataUpdateCoordinator[List[Dict[str, Any]]]):
             # The data for the removed decision is in our stored _known_decisions
             removed_decision = self._known_decisions[dec_id]
             _LOGGER.info("CrowdSec decision removed: %s", removed_decision['value'])
+            event_payload = {**removed_decision, "device_id": device.id}
             self.hass.bus.async_fire(EVENT_DECISION_REMOVED, removed_decision)
 
         # Update the state for the next poll and return data to entities
@@ -71,7 +84,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     """Set up the CrowdSec sensor from a config entry."""
     session = hass.data[DOMAIN][entry.entry_id]["session"]
     api = CrowdSecApiClient(**entry.data, session=session)
-    coordinator = CrowdSecCoordinator(hass, api)
+    coordinator = CrowdSecCoordinator(hass, api, entry)
     await coordinator.async_config_entry_first_refresh()
 
     # Pass the config entry to the sensor so it can link to the device
