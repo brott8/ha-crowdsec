@@ -60,7 +60,7 @@ condition: []
 action:
   - service: notify.persistent_notification
     data:
-      title: "🛡️ New IP Banned by CrowdSec"
+      title: "New IP Banned by CrowdSec"
       message: "IP: {{ trigger.event.data.value }} for {{ trigger.event.data.duration }}. Reason: {{ trigger.event.data.scenario }}."
 mode: single
 ```
