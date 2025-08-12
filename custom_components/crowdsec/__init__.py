@@ -1,22 +1,50 @@
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from .const import DOMAIN
+from __future__ import annotations
 
 import importlib
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+# Import your coordinator and API client
+from .sensor import CrowdSecCoordinator
+from .api import CrowdSecApiClient 
+
+from .const import DOMAIN
 
 PLATFORMS = ["sensor"]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up CrowdSec from a config entry."""
+    # Step 1: Create the device in the registry FIRST.
+    device_registry = dr.async_get(hass)
+    device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, entry.entry_id)},
+        name=entry.title,
+        manufacturer="CrowdSec",
+        model="LAPI",
+        entry_type=dr.DeviceEntryType.SERVICE,
+    )
+
+    # Step 2: Create the API client and coordinator.
+    session = async_get_clientsession(hass)
+    api_client = CrowdSecApiClient(**entry.data, session=session)
+    coordinator = CrowdSecCoordinator(hass, api_client)
+
+    # Step 3: Store the coordinator in hass.data for platforms to access.
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {"session": async_get_clientsession(hass)}
+    hass.data[DOMAIN][entry.entry_id] = coordinator
+
+    # Step 4: Pre-load the device_trigger platform to avoid blocking import.
     await hass.async_add_executor_job(
         lambda: importlib.import_module(".device_trigger", package=__package__)
     )
 
+    # Step 5: Forward the setup to platforms (e.g., sensor).
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    entry.async_on_unload(entry.add_update_listener(update_listener))
+
     return True
 
 

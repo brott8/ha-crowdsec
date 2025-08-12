@@ -3,9 +3,6 @@ import logging
 from datetime import timedelta
 from typing import Any, Dict, List
 
-from homeassistant.helpers import device_registry as dr
-from homeassistant.components.sensor import SensorEntity
-from homeassistant.core import HomeAssistant
 from homeassistant import config_entries
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -13,7 +10,14 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.components.sensor import SensorEntity
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers import device_registry as dr
+
 from .api import CrowdSecApiClient
+
 from .const import DOMAIN, DEFAULT_SCAN_INTERVAL, EVENT_NEW_DECISION, EVENT_DECISION_REMOVED
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,16 +41,19 @@ class CrowdSecCoordinator(DataUpdateCoordinator[List[Dict[str, Any]]]):
     async def _async_update_data(self) -> List[Dict[str, Any]]:
         # Find the device associated with this config entry
         device_registry = dr.async_get(self.hass)
-        device = device_registry.async_get_device(identifiers={(DOMAIN, self.entry.entry_id)})
+        # device = device_registry.async_get_device(identifiers={(DOMAIN, self.entry.entry_id)})
+        # The config entry's unique_id is the most stable identifier.
+        device = device_registry.async_get_device(
+            identifiers={(DOMAIN, self.api_client.unique_id)} # Assumes api_client has unique_id
+        )
+
         # The device might not exist on the very first run, so we check for it.
         if not device:
             _LOGGER.debug("Device not yet available, skipping event firing")
-            # We still want to update data, just can't fire device-specific events yet.
-            decisions = await self.api_client.get_decisions()
-            if decisions is None:
-                raise UpdateFailed("Failed to communicate with CrowdSec LAPI.")
-            self._known_decisions = {d['id']: d for d in decisions}
-            return decisions
+            # Still return data for the sensor to work.
+            return await self.api_client.get_decisions() or []
+
+        device_id = device.id
 
         """Fetch data from API endpoint and detect changes."""
         decisions = await self.api_client.get_decisions()
@@ -79,15 +86,14 @@ class CrowdSecCoordinator(DataUpdateCoordinator[List[Dict[str, Any]]]):
         self._known_decisions = current_decisions_map
         return decisions
 
-
-async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: config_entries.ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Set up the CrowdSec sensor from a config entry."""
-    session = hass.data[DOMAIN][entry.entry_id]["session"]
-    api = CrowdSecApiClient(**entry.data, session=session)
-    coordinator = CrowdSecCoordinator(hass, api, entry)
-    await coordinator.async_config_entry_first_refresh()
-
-    # Pass the config entry to the sensor so it can link to the device
+    # Retrieve the coordinator that was created in __init__.py
+    coordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([CrowdSecSensor(coordinator, entry)])
 
 
@@ -102,14 +108,9 @@ class CrowdSecSensor(CoordinatorEntity[CrowdSecCoordinator], SensorEntity):
         # Unique ID for the sensor entity itself
         self._attr_unique_id = f"{entry.entry_id}_active_decisions"
 
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "CrowdSec LAPI",
-            "manufacturer": "CrowdSec",
-            "model": "Local API",
-            # "sw_version": coordinator.data.get("version", "N/A"),
-            "entry_type": "service",
-        }
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+        )
 
     @property
     def name(self) -> str:
