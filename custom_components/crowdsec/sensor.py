@@ -38,52 +38,51 @@ class CrowdSecCoordinator(DataUpdateCoordinator[List[Dict[str, Any]]]):
         # Store the full decision objects from the last successful update
         self._known_decisions: Dict[int, Dict[str, Any]] = {}
 
-    async def _async_update_data(self) -> List[Dict[str, Any]]:
-        # Find the device associated with this config entry
-        device_registry = dr.async_get(self.hass)
-        # device = device_registry.async_get_device(identifiers={(DOMAIN, self.entry.entry_id)})
-        # The config entry's unique_id is the most stable identifier.
-        device = device_registry.async_get_device(
-            identifiers={(DOMAIN, self.api_client.unique_id)} # Assumes api_client has unique_id
-        )
-
-        # The device might not exist on the very first run, so we check for it.
-        if not device:
-            _LOGGER.debug("Device not yet available, skipping event firing")
-            # Still return data for the sensor to work.
-            return await self.api_client.get_decisions() or []
-
-        device_id = device.id
-
+    async def _async_update_data(self) -> list[dict[str, any]]:
         """Fetch data from API endpoint and detect changes."""
-        decisions = await self.api_client.get_decisions()
-        if decisions is None:
-            # The API client will log the specific error
-            raise UpdateFailed("Failed to communicate with CrowdSec LAPI.")
+        # Fetch decisions FIRST. This should always happen.
+        decisions = await self.api_client.get_decisions() or []
 
+        # Always perform the comparison logic to see if anything changed.
         current_decisions_map = {d['id']: d for d in decisions}
         current_ids = set(current_decisions_map.keys())
         known_ids = set(self._known_decisions.keys())
-
-        # --- Detect and fire events for NEW decisions ---
         new_ids = current_ids - known_ids
-        for dec_id in new_ids:
-            new_decision = current_decisions_map[dec_id]
-            _LOGGER.info("New CrowdSec decision: %s", new_decision['value'])
-            event_payload = {**new_decision, "device_id": device.id}
-            self.hass.bus.async_fire(EVENT_NEW_DECISION, new_decision)
-
-        # --- Detect and fire events for REMOVED decisions ---
         removed_ids = known_ids - current_ids
-        for dec_id in removed_ids:
-            # The data for the removed decision is in our stored _known_decisions
-            removed_decision = self._known_decisions[dec_id]
-            _LOGGER.info("CrowdSec decision removed: %s", removed_decision['value'])
-            event_payload = {**removed_decision, "device_id": device.id}
-            self.hass.bus.async_fire(EVENT_DECISION_REMOVED, removed_decision)
 
-        # Update the state for the next poll and return data to entities
+        # If there are events to fire, find the device and fire them.
+        if new_ids or removed_ids:
+            device_registry = dr.async_get(self.hass)
+            device = device_registry.async_get_device(
+                identifiers={(DOMAIN, self.entry.entry_id)}
+            )
+
+            if not device:
+                _LOGGER.warning("Device not found, cannot fire events for this update.")
+            else:
+                device_id = device.id
+                # Fire events for NEW decisions
+                for dec_id in new_ids:
+                    new_decision = current_decisions_map[dec_id]
+                    # Create the payload with the device_id
+                    event_payload = {**new_decision, "device_id": device_id}
+                    # Pass the correct event_payload here
+                    self.hass.bus.async_fire(EVENT_NEW_DECISION, event_payload)
+                    _LOGGER.debug("Fired new_decision event for %s", new_decision['value'])
+
+                # Fire events for REMOVED decisions
+                for dec_id in removed_ids:
+                    removed_decision = self._known_decisions[dec_id]
+                    # Create the payload with the device_id
+                    event_payload = {**removed_decision, "device_id": device_id}
+                    # Pass the correct event_payload here
+                    self.hass.bus.async_fire(EVENT_DECISION_REMOVED, event_payload)
+                    _LOGGER.debug("Fired decision_removed event for %s", removed_decision['value'])
+
+        # ALWAYS update the internal state for the next poll.
         self._known_decisions = current_decisions_map
+        
+        # Return the data for sensor entities.
         return decisions
 
 async def async_setup_entry(

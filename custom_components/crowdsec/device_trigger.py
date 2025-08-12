@@ -4,16 +4,17 @@ from __future__ import annotations
 import voluptuous as vol
 from typing import Any
 
-from homeassistant.helpers.trigger import TriggerActionType, TriggerInfo
-from homeassistant.components.device_automation import DEVICE_TRIGGER_BASE_SCHEMA
 from homeassistant.const import (
     CONF_DEVICE_ID,
     CONF_DOMAIN,
     CONF_PLATFORM,
     CONF_TYPE,
 )
-from homeassistant.core import CALLBACK_TYPE, HomeAssistant
+# Add Event to the imports from homeassistant.core
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, Event
+from homeassistant.helpers.trigger import TriggerActionType, TriggerInfo
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.components.device_automation import DEVICE_TRIGGER_BASE_SCHEMA
 
 from .const import DOMAIN, EVENT_DECISION_REMOVED, EVENT_NEW_DECISION
 
@@ -50,19 +51,20 @@ async def async_attach_trigger(
     hass: HomeAssistant,
     config: ConfigType,
     action: TriggerActionType,
-    automation_info: TriggerInfo,
+    trigger_info: TriggerInfo,
 ) -> CALLBACK_TYPE:
     """Attach a trigger."""
     event_type = TRIGGER_TYPE_TO_EVENT[config[CONF_TYPE]]
+    device_id = config[CONF_DEVICE_ID]
 
-    event_config = {
-        "event_type": event_type,
-        "event_data": {
-            "device_id": config[CONF_DEVICE_ID],
-        },
-        "action": action,
-    }
+    async def handle_event(event: Event) -> None:
+        """Handle the event and run the action."""
+        # Manually filter the event: check if it's for our device.
+        if event.data.get("device_id") != device_id:
+            return
 
-    return await hass.helpers.event.async_track_template_event(
-        event_config, automation_info
-    )
+        # This passes the event's data to the action, making it available
+        # in templates as 'trigger.event.data'.
+        await action({**trigger_info, "trigger_data": event.data}, context=event.context)
+
+    return hass.bus.async_listen(event_type, handle_event)

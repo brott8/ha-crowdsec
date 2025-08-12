@@ -11,11 +11,12 @@ _LOGGER = logging.getLogger(__name__)
 class CrowdSecApiClient:
     """A client for the CrowdSec LAPI."""
 
-    def __init__(self, scheme: str, host: str, port: int, api_key: str, session: aiohttp.ClientSession):
+    def __init__(self, scheme: str, host: str, port: int, api_key: str, unique_id: str, session: aiohttp.ClientSession):
         """Initialize the API client."""
         self._url = f"{scheme}://{host}:{port}/v1/decisions?origins=crowdsec,cscli"
         self._headers = {"X-Api-Key": api_key}
         self.session = session
+        self.unique_id = unique_id
 
     async def get_decisions(self) -> List[Dict[str, Any]]:
         """Fetch active decisions from the LAPI."""
