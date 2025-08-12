@@ -11,7 +11,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .sensor import CrowdSecCoordinator
 from .api import CrowdSecApiClient 
 
-from .const import DOMAIN
+from .const import DOMAIN, CONF_SCHEME
 
 PLATFORMS = ["sensor"]
 
@@ -30,7 +30,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Create the API client and coordinator.
     session = async_get_clientsession(hass)
-    api_client = CrowdSecApiClient(**entry.data, unique_id=entry.unique_id, session=session)
+    api_client = CrowdSecApiClient(
+        host=entry.data["host"],
+        port=entry.data["port"],
+        api_key=entry.data["api_key"],
+        scheme=entry.data[CONF_SCHEME],
+        unique_id=entry.unique_id,
+        session=session,
+    )
     coordinator = CrowdSecCoordinator(hass, api_client, entry)
 
     # Store the coordinator in hass.data for platforms to access.

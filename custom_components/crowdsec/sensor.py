@@ -27,11 +27,14 @@ class CrowdSecCoordinator(DataUpdateCoordinator[List[Dict[str, Any]]]):
 
     def __init__(self, hass: HomeAssistant, api_client: CrowdSecApiClient, entry: config_entries.ConfigEntry):
         """Initialize the coordinator."""
+        # Get the scan_interval from the entry object that was passed in.
+        scan_interval = entry.data.get("scan_interval", DEFAULT_SCAN_INTERVAL)
+
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
+            update_interval=timedelta(seconds=scan_interval),
         )
         self.api_client = api_client
         self.entry = entry # Store the config entry

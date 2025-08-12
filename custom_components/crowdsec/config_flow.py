@@ -1,4 +1,3 @@
-# config_flow.py (with validation)
 import voluptuous as vol
 import aiohttp
 
@@ -6,7 +5,7 @@ from homeassistant import config_entries
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import DOMAIN, DEFAULT_PORT, CONF_SCHEME, DEFAULT_SCAN_INTERVAL
-from .api import CrowdSecApiClient # Import your API client
+from .api import CrowdSecApiClient
 
 class CrowdSecConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
@@ -14,6 +13,13 @@ class CrowdSecConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         errors = {}
         if user_input is not None:
+            # Create a stable unique_id from the user's input.
+            unique_id = f"{user_input["host"]}:{user_input["port"]}"
+            
+            # Set the unique_id for this flow to check for duplicates.
+            await self.async_set_unique_id(unique_id)
+            self._abort_if_unique_id_configured()
+
             # --- Start Validation ---
             session = async_get_clientsession(self.hass)
             api_client = CrowdSecApiClient(
@@ -21,6 +27,7 @@ class CrowdSecConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 host=user_input["host"],
                 port=user_input["port"],
                 api_key=user_input["api_key"],
+                unique_id=unique_id,
                 session=session,
             )
             
