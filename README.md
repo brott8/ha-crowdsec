@@ -72,12 +72,15 @@ You can easily display the list of active decisions on your dashboard using a Ma
 ```yaml
 type: markdown
 title: CrowdSec Active Decisions
-content: >-
+content: |
   | IP Address / Value | Reason of Ban | Duration |
   |:---|:---|:---|
-  {% for decision in state_attr('sensor.crowdsec_active_decisions', 'decisions') %}
-    | {{ decision.value }} | {{ decision.scenario }} | {{ decision.duration }} |
-  {% else %}
-    | No active decisions | | |
-  {% endfor %}
+  {% set decisions = state_attr('sensor.crowdsec_active_decisions', 'decisions') -%}
+  {% if decisions is iterable and decisions is not none %}
+    {%- for decision in decisions -%}
+  | {{ decision.value }} | {{ decision.scenario }} | {{ decision.duration }} |
+    {% endfor -%}
+  {%- else -%}
+  | No active decisions | | |
+  {%- endif %}
 ```
