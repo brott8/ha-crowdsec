@@ -17,9 +17,7 @@ This is a custom integration for Home Assistant that connects to a CrowdSec Loca
 ## Installation
 
 1.  **HACS (Recommended)**:
-    -   Go to HACS > Integrations > Custom Repositories.
-    -   Add the URL to this GitHub repository.
-    -   Select "Integration" as the category and click **Add**.
+    -   Go to HACS.
     -   Find the "CrowdSec LAPI" integration in the list and click **Install**.
 
 2.  **Manual Installation**:
