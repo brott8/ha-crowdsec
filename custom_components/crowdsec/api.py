@@ -24,12 +24,13 @@ class CrowdSecApiClient:
             with async_timeout.timeout(10):
                 async with self.session.get(self._url, headers=self._headers) as resp:
                     resp.raise_for_status() # Aiohttp's way to raise on 4xx/5xx
-                    return await resp.json()
+                    data = await resp.json()
+                    return data if data is not None else []
         except asyncio.TimeoutError:
             _LOGGER.error("Timeout connecting to CrowdSec LAPI at %s", self._url)
         except aiohttp.ClientError as e:
             # This will catch HTTP errors and connection issues
             _LOGGER.error("Error fetching CrowdSec decisions: %s", e)
         
-        # Return an empty list on failure so the coordinator can handle it
-        return []
+        # Return None on failure so the coordinator can handle it
+        return None
