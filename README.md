@@ -69,16 +69,34 @@ You can easily display the list of active decisions on your dashboard using a Ma
 
 ```yaml
 type: markdown
-title: CrowdSec Active Decisions
-content: |
-  | IP Address / Value | Reason of Ban | Duration |
-  |:---|:---|:---|
-  {% set decisions = state_attr('sensor.crowdsec_active_decisions', 'decisions') -%}
+title: CrowdSec - Aktive Bans
+content: >-
+  | IP Addresse | Land | Begründung | Dauer | Anz. |
+
+  |:---|:---|:---|:---|:---|
+
+  {% set decisions = state_attr('sensor.crowdsec_active_decisions', 'decisions')
+  -%}
+
   {% if decisions is iterable and decisions is not none %}
-    {%- for decision in decisions -%}
-  | {{ decision.value }} | {{ decision.scenario }} | {{ decision.duration }} |
+    {%- set grouped = namespace(data={}) -%}
+    {%- for d in decisions -%}
+      {%- if d.value not in grouped.data -%}
+        {%- set grouped.data = dict(grouped.data, **{d.value: {'count': 1, 'country_code': d.get('country_code', '?'), 'country': d.get('country', ''), 'scenario': d.scenario, 'duration': d.duration}}) -%}
+      {%- else -%}
+        {%- set existing = grouped.data[d.value] -%}
+        {%- set grouped.data = dict(grouped.data, **{d.value: dict(existing, count=existing.count + 1)}) -%}
+      {%- endif -%}
+    {%- endfor -%}
+    {%- for ip, d in grouped.data.items() -%}
+  | [{{ ip }}](https://app.crowdsec.net/cti/{{ ip }}) | {{ d.country_code }} {{
+  d.country }} | {{ d.scenario | replace('crowdsecurity/', '') }} | {{
+  d.duration }} | {% if d.count > 1 %}⭕ {{ d.count }}x{% else %}1x{% endif %} |
     {% endfor -%}
   {%- else -%}
-  | No active decisions | | |
+
+  | Keine Aktiven Bans | | | | |
+
   {%- endif %}
+
 ```
