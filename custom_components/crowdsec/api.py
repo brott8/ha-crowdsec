@@ -1,7 +1,7 @@
 # api.py
 import asyncio
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 import aiohttp
 import async_timeout
@@ -13,24 +13,24 @@ class CrowdSecApiClient:
 
     def __init__(self, scheme: str, host: str, port: int, api_key: str, unique_id: str, session: aiohttp.ClientSession):
         """Initialize the API client."""
-        self._url = f"{scheme}://{host}:{port}/v1/decisions?origins=crowdsec,cscli"
+        self._decisions_url = f"{scheme}://{host}:{port}/v1/decisions?origins=crowdsec,cscli"
         self._headers = {"X-Api-Key": api_key}
         self.session = session
         self.unique_id = unique_id
 
-    async def get_decisions(self) -> List[Dict[str, Any]]:
+    async def get_decisions(self) -> Optional[List[Dict[str, Any]]]:
         """Fetch active decisions from the LAPI."""
         try:
             with async_timeout.timeout(10):
-                async with self.session.get(self._url, headers=self._headers) as resp:
+                async with self.session.get(self._decisions_url, headers=self._headers) as resp:
                     resp.raise_for_status() # Aiohttp's way to raise on 4xx/5xx
                     data = await resp.json()
                     return data if data is not None else []
         except asyncio.TimeoutError:
-            _LOGGER.error("Timeout connecting to CrowdSec LAPI at %s", self._url)
+            _LOGGER.error("Timeout connecting to CrowdSec LAPI at %s", self._decisions_url)
         except aiohttp.ClientError as e:
             # This will catch HTTP errors and connection issues
             _LOGGER.error("Error fetching CrowdSec decisions: %s", e)
-        
+
         # Return None on failure so the coordinator can handle it
         return None

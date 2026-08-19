@@ -8,6 +8,8 @@ This is a custom integration for Home Assistant that connects to a CrowdSec Loca
 
 -   **Active Decisions Sensor**: Provides a `sensor.crowdsec_active_decisions` entity whose state is the total count of current bans.
 -   **Detailed Attributes**: The sensor's attributes contain a full list of all active decisions, including the banned IP/value, the reason for the ban (scenario), and its duration.
+-   **Geolocation**: Each decision is automatically enriched with `country`, `latitude`, `longitude`, `as_name` and `as_number`, available both in the sensor attributes and in the event payloads. No configuration needed: Home Assistant looks up the banned IPs via the free [ip-api.com](https://ip-api.com) service (one lookup per IP, cached while the decision is active). This also covers decisions created before installing this integration and manual `cscli decisions add` bans. Note that the banned IPs are sent to that external service over plain HTTP.
+    -   **ip-api.com quota**: the free tier is rate-limited to 15 batch requests per minute (100 IPs per batch, i.e. ~1500 IPs/min) with no daily quota, for non-commercial use. The integration stays far below this: each IP is looked up only once and at most 5 batches are sent per scan, so even an initial sync of 500 active bans fits in a single poll.
 -   **Real-time Event Notifications**:
     -   Fires a `crowdsec_new_decision` event whenever a new ban is detected by the integration.
     -   Fires a `crowdsec_decision_removed` event whenever a ban expires or is manually removed.
@@ -71,14 +73,20 @@ You can easily display the list of active decisions on your dashboard using a Ma
 type: markdown
 title: CrowdSec Active Decisions
 content: |
-  | IP Address / Value | Reason of Ban | Duration |
-  |:---|:---|:---|
+  | IP Address / Value | Country | Reason of Ban | Duration |
+  |:---|:---|:---|:---|
   {% set decisions = state_attr('sensor.crowdsec_active_decisions', 'decisions') -%}
-  {% if decisions is iterable and decisions is not none %}
+  {% if decisions %}
     {%- for decision in decisions -%}
-  | {{ decision.value }} | {{ decision.scenario }} | {{ decision.duration }} |
+  | `{{ decision.value }}` | {{ decision.country | default('?', true) }} | {{ decision.scenario }} | {{ decision.duration }} |
     {% endfor -%}
   {%- else -%}
-  | No active decisions | | |
+  | No active decisions | | | |
   {%- endif %}
+```
+
+The `default('?', true)` filter keeps the card rendering a `?` instead of an error when the geo data is missing (private IPs, or a lookup that has not completed yet). With the coordinates you can even link each ban to a map — guard on `latitude` so rows without geo data fall back to plain text:
+
+```yaml
+| `{{ decision.value }}` | {% if decision.latitude is defined %}[{{ decision.country | default('?', true) }}](https://www.openstreetmap.org/?mlat={{ decision.latitude }}&mlon={{ decision.longitude }}#map=6/{{ decision.latitude }}/{{ decision.longitude }}){% else %}{{ decision.country | default('?', true) }}{% endif %} | {{ decision.scenario }} |
 ```

@@ -1,7 +1,7 @@
 # sensor.py
 import logging
 from datetime import timedelta
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from homeassistant import config_entries
 from homeassistant.helpers.update_coordinator import (
@@ -17,6 +17,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers import device_registry as dr
 
 from .api import CrowdSecApiClient
+from .geo import async_lookup_ips
 
 from .const import DOMAIN, DEFAULT_SCAN_INTERVAL, EVENT_NEW_DECISION, EVENT_DECISION_REMOVED
 
@@ -40,11 +41,17 @@ class CrowdSecCoordinator(DataUpdateCoordinator[List[Dict[str, Any]]]):
         self.entry = entry # Store the config entry
         # Store the full decision objects from the last successful update
         self._known_decisions: Dict[int, Dict[str, Any]] = {}
+        # Cache for the ip-api.com geolocation lookups
+        self._geo_cache: Dict[str, Dict[str, Any]] = {}
 
     async def _async_update_data(self) -> list[dict[str, any]]:
         """Fetch data from API endpoint and detect changes."""
         # Fetch decisions FIRST. This should always happen.
         decisions = await self.api_client.get_decisions() or []
+
+        # Attach geolocation data (country, latitude, longitude, AS).
+        if decisions:
+            await self._async_enrich_with_geo(decisions)
 
         # Always perform the comparison logic to see if anything changed.
         current_decisions_map = {d['id']: d for d in decisions}
@@ -84,9 +91,49 @@ class CrowdSecCoordinator(DataUpdateCoordinator[List[Dict[str, Any]]]):
 
         # ALWAYS update the internal state for the next poll.
         self._known_decisions = current_decisions_map
-        
+
         # Return the data for sensor entities.
         return decisions
+
+    async def _async_enrich_with_geo(self, decisions: List[Dict[str, Any]]) -> None:
+        """Geolocate decision IPs via ip-api.com.
+
+        Results are cached per IP for as long as the decision is active, so
+        each IP is only sent to the external service once. A failing lookup
+        never fails the update; the decisions are just left untouched.
+        """
+        wanted = [
+            ip
+            for ip in {self._decision_ip(d) for d in decisions}
+            if ip and ip not in self._geo_cache
+        ]
+        if wanted:
+            results = await async_lookup_ips(self.api_client.session, wanted)
+            if results:
+                self._geo_cache.update(results)
+
+        # Keep the cache bounded to the currently active decisions.
+        active_ips = {self._decision_ip(d) for d in decisions}
+        self._geo_cache = {
+            ip: geo for ip, geo in self._geo_cache.items() if ip in active_ips
+        }
+
+        for decision in decisions:
+            geo = self._geo_cache.get(self._decision_ip(decision))
+            if geo:
+                decision.update(geo)
+
+    @staticmethod
+    def _decision_ip(decision: Dict[str, Any]) -> Optional[str]:
+        """Return the IP to geolocate for a decision, if any."""
+        scope = (decision.get("scope") or "").lower()
+        value = decision.get("value") or ""
+        if scope == "ip":
+            return value
+        if scope == "range":
+            # Look up the network address of the banned range.
+            return value.split("/")[0]
+        return None
 
 async def async_setup_entry(
     hass: HomeAssistant,
