@@ -8,3 +8,7 @@ __pycache__/
 deps/
 www/
 ip_bans.yaml
+
+# The bundled Lovelace card ships with the integration
+!custom_components/crowdsec/www/
+!custom_components/crowdsec/www/**
