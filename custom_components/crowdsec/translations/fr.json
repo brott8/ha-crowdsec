@@ -1,0 +1,40 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configuration de CrowdSec LAPI",
+        "description": "Saisissez les informations de connexion de votre API locale (LAPI) CrowdSec.",
+        "data": {
+          "host": "Hôte",
+          "port": "Port",
+          "api_key": "Clé d'API",
+          "scheme": "Protocole (http ou https)",
+          "scan_interval": "Intervalle de scan (secondes)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Impossible de se connecter à la LAPI CrowdSec. Vérifiez l'hôte, le port et la clé d'API.",
+      "unknown": "Une erreur inconnue s'est produite."
+    },
+    "abort": {
+      "already_configured": "Cette instance CrowdSec est déjà configurée."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options de CrowdSec LAPI",
+        "data": {
+          "scan_interval": "Fréquence de mise à jour (secondes)"
+        }
+      }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "new_decision": "Une nouvelle décision est détectée",
+      "decision_removed": "Une décision a expiré"
+    }
+  }
+}
