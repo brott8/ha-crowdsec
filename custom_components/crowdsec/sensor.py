@@ -57,7 +57,7 @@ class CrowdSecCoordinator(DataUpdateCoordinator[List[Dict[str, Any]]]):
         if new_ids or removed_ids:
             device_registry = dr.async_get(self.hass)
             device = device_registry.async_get_device_by_identifier(
-                (DOMAIN, self.entry.entry_id)
+                (DOMAIN, self.entry.entry_id), self.entry.entry_id
             )
 
             if not device:
