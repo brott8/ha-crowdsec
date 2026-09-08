@@ -211,6 +211,20 @@ def _fake_maxminddb():
     )
 
 
+@pytest.fixture
+def geolite_dir(hass):
+    """The fixed database folder, emptied before and after the test.
+
+    The test configuration directory is shared by every test, so stand-in
+    files left behind would leak into the next one.
+    """
+    import shutil
+    directory = hass.config.path("crowdsec")
+    shutil.rmtree(directory, ignore_errors=True)
+    yield directory
+    shutil.rmtree(directory, ignore_errors=True)
+
+
 def _write_databases(hass, asn=True):
     """Create empty stand-ins at the fixed location inside the config dir."""
     import os
@@ -244,7 +258,7 @@ async def test_local_expected_paths(hass):
     assert provider.asn_path == hass.config.path("crowdsec", "GeoLite2-ASN.mmdb")
 
 
-async def test_local_lookup_reads_both_databases(hass, aioclient_mock):
+async def test_local_lookup_reads_both_databases(hass, aioclient_mock, geolite_dir):
     _write_databases(hass)
     provider = GeoLite2FileGeoProvider(hass)
 
@@ -262,7 +276,7 @@ async def test_local_lookup_reads_both_databases(hass, aioclient_mock):
     provider.close()
 
 
-async def test_local_lookup_city_only(hass):
+async def test_local_lookup_city_only(hass, geolite_dir):
     _write_databases(hass, asn=False)
     provider = GeoLite2FileGeoProvider(hass)
     with patch.dict(sys.modules, {"maxminddb": _fake_maxminddb()}):
@@ -270,13 +284,13 @@ async def test_local_lookup_city_only(hass):
     assert results["1.2.3.4"] == {"country": "FR", "latitude": 48.85, "longitude": 2.35}
 
 
-async def test_local_lookup_without_database_is_unavailable(hass):
+async def test_local_lookup_without_database_is_unavailable(hass, geolite_dir):
     provider = GeoLite2FileGeoProvider(hass)
     with patch.dict(sys.modules, {"maxminddb": _fake_maxminddb()}):
         assert await provider.async_lookup_ips(["1.2.3.4"]) is None
 
 
-async def test_local_lookup_ignores_an_invalid_address(hass):
+async def test_local_lookup_ignores_an_invalid_address(hass, geolite_dir):
     _write_databases(hass)
     provider = GeoLite2FileGeoProvider(hass)
     with patch.dict(sys.modules, {"maxminddb": _fake_maxminddb()}):
@@ -284,7 +298,7 @@ async def test_local_lookup_ignores_an_invalid_address(hass):
     assert results == {"not-an-ip": {}}
 
 
-async def test_local_reopens_a_replaced_database(hass):
+async def test_local_reopens_a_replaced_database(hass, geolite_dir):
     import os
     directory = _write_databases(hass, asn=False)
     provider = GeoLite2FileGeoProvider(hass)
@@ -302,11 +316,18 @@ async def test_local_reopens_a_replaced_database(hass):
 # --------------------------------------------------------- setup + sensor ---
 
 
+async def _refresh(hass, entry):
+    """Run one poll: the coordinator has no first refresh at setup."""
+    await hass.data[DOMAIN][entry.entry_id].async_refresh()
+    await hass.async_block_till_done()
+
+
 async def _setup(hass, data, options=None):
     entry = MockConfigEntry(domain=DOMAIN, data=data, options=options or {}, unique_id="lapi.local:8080", title="lapi.local")
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
+    await _refresh(hass, entry)
     return entry
 
 
@@ -338,9 +359,7 @@ async def test_enrichment_cache_and_private_addresses(hass, aioclient_mock):
         assert set(aioclient_mock.mock_calls[0][2]) == {"1.2.3.4", "5.6.7.0"}
 
         # Second poll: everything cached, no new request.
-        coordinator = hass.data[DOMAIN][entry.entry_id]
-        await coordinator.async_refresh()
-        await hass.async_block_till_done()
+        await _refresh(hass, entry)
         assert aioclient_mock.call_count == 1
         assert hass.states.get("sensor.crowdsec_active_decisions").attributes["decisions"][0]["country"] == "FR"
 
@@ -365,7 +384,7 @@ async def test_lookup_failure_keeps_decisions(hass, aioclient_mock):
     assert all("country" not in d for d in state.attributes["decisions"])
 
 
-async def test_setup_with_the_local_provider(hass, aioclient_mock):
+async def test_setup_with_the_local_provider(hass, aioclient_mock, geolite_dir):
     _write_databases(hass)
     with patch.dict(sys.modules, {"maxminddb": _fake_maxminddb()}), _patch_decisions(DECISIONS):
         await _setup(hass, {**ENTRY_DATA, CONF_GEO_PROVIDER: "geolite2_file"})
@@ -426,6 +445,7 @@ async def test_options_flow_enables_provider_and_reloads(hass, aioclient_mock):
             result["flow_id"], {CONF_SCAN_INTERVAL: 30, CONF_GEO_PROVIDER: "ip_api"}
         )
         await hass.async_block_till_done()
+        await _refresh(hass, entry)
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert entry.options[CONF_GEO_PROVIDER] == "ip_api"
     assert entry.options[CONF_SCAN_INTERVAL] == 30
@@ -445,6 +465,7 @@ async def test_options_flow_disables_provider(hass, aioclient_mock):
             result["flow_id"], {CONF_SCAN_INTERVAL: 60, CONF_GEO_PROVIDER: GEO_PROVIDER_NONE}
         )
         await hass.async_block_till_done()
+        await _refresh(hass, entry)
     assert aioclient_mock.call_count == 1
     assert hass.data[DOMAIN][entry.entry_id].geo_provider is None
     assert all("country" not in d for d in hass.states.get("sensor.crowdsec_active_decisions").attributes["decisions"])
