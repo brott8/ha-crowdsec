@@ -1,0 +1,31 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    name: pytest (Python ${{ matrix.python }}, ${{ matrix.label }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Oldest Home Assistant still supporting Python 3.13.
+          - python: "3.13"
+            harness: "pytest-homeassistant-custom-component==0.13.316"
+            label: "Home Assistant 2026.2"
+          # Latest Home Assistant.
+          - python: "3.14"
+            harness: "pytest-homeassistant-custom-component"
+            label: "Home Assistant latest"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install the test harness
+        run: pip install "${{ matrix.harness }}"
+      - name: Run the tests
+        run: python -m pytest tests -q -p no:cacheprovider -rA
