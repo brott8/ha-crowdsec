@@ -53,10 +53,23 @@ IPQUERY_RESPONSE = [
 
 
 def _patch_decisions(decisions):
+    """Fake LAPI answering fresh copies on every poll, as the real one does."""
     return patch(
         "custom_components.crowdsec.api.CrowdSecApiClient.get_decisions",
-        AsyncMock(return_value=[dict(d) for d in decisions]),
+        AsyncMock(side_effect=lambda: [dict(d) for d in decisions]),
     )
+
+
+def _sensor(hass, entry):
+    """State of the decisions sensor, found through its unique id."""
+    from homeassistant.helpers import entity_registry as er
+    entity_id = er.async_get(hass).async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_active_decisions"
+    )
+    assert entity_id, "sensor not registered"
+    state = hass.states.get(entity_id)
+    assert state is not None, entity_id
+    return state
 
 
 # ------------------------------------------------------------- registry ---
@@ -334,8 +347,8 @@ async def _setup(hass, data, options=None):
 async def test_default_is_no_lookup(hass, aioclient_mock):
     """Default: no provider, nothing is sent anywhere, decisions untouched."""
     with _patch_decisions(DECISIONS):
-        await _setup(hass, ENTRY_DATA)
-    state = hass.states.get("sensor.crowdsec_active_decisions")
+        entry = await _setup(hass, ENTRY_DATA)
+    state = _sensor(hass, entry)
     assert state.state == "3"
     assert aioclient_mock.call_count == 0
     assert all("country" not in d for d in state.attributes["decisions"])
@@ -346,7 +359,7 @@ async def test_enrichment_cache_and_private_addresses(hass, aioclient_mock):
     aioclient_mock.post(IpApiGeoProvider.BATCH_URL, json=IP_API_RESPONSE)
     with _patch_decisions(DECISIONS):
         entry = await _setup(hass, {**ENTRY_DATA, CONF_GEO_PROVIDER: "ip_api"})
-        state = hass.states.get("sensor.crowdsec_active_decisions")
+        state = _sensor(hass, entry)
         by_value = {d["value"]: d for d in state.attributes["decisions"]}
         assert by_value["1.2.3.4"]["country"] == "FR"
         assert by_value["1.2.3.4"]["latitude"] == 48.85
@@ -361,7 +374,7 @@ async def test_enrichment_cache_and_private_addresses(hass, aioclient_mock):
         # Second poll: everything cached, no new request.
         await _refresh(hass, entry)
         assert aioclient_mock.call_count == 1
-        assert hass.states.get("sensor.crowdsec_active_decisions").attributes["decisions"][0]["country"] == "FR"
+        assert _sensor(hass, entry).attributes["decisions"][0]["country"] == "FR"
 
 
 async def test_new_decision_event_carries_geo(hass, aioclient_mock):
@@ -378,8 +391,8 @@ async def test_new_decision_event_carries_geo(hass, aioclient_mock):
 async def test_lookup_failure_keeps_decisions(hass, aioclient_mock):
     aioclient_mock.post(IpApiGeoProvider.BATCH_URL, status=503)
     with _patch_decisions(DECISIONS):
-        await _setup(hass, {**ENTRY_DATA, CONF_GEO_PROVIDER: "ip_api"})
-    state = hass.states.get("sensor.crowdsec_active_decisions")
+        entry = await _setup(hass, {**ENTRY_DATA, CONF_GEO_PROVIDER: "ip_api"})
+    state = _sensor(hass, entry)
     assert state.state == "3"
     assert all("country" not in d for d in state.attributes["decisions"])
 
@@ -387,8 +400,8 @@ async def test_lookup_failure_keeps_decisions(hass, aioclient_mock):
 async def test_setup_with_the_local_provider(hass, aioclient_mock, geolite_dir):
     _write_databases(hass)
     with patch.dict(sys.modules, {"maxminddb": _fake_maxminddb()}), _patch_decisions(DECISIONS):
-        await _setup(hass, {**ENTRY_DATA, CONF_GEO_PROVIDER: "geolite2_file"})
-        state = hass.states.get("sensor.crowdsec_active_decisions")
+        entry = await _setup(hass, {**ENTRY_DATA, CONF_GEO_PROVIDER: "geolite2_file"})
+        state = _sensor(hass, entry)
     by_value = {d["value"]: d for d in state.attributes["decisions"]}
     assert by_value["1.2.3.4"]["country"] == "FR"
     assert by_value["1.2.3.4"]["as_name"] == "OVH SAS"
@@ -452,7 +465,7 @@ async def test_options_flow_enables_provider_and_reloads(hass, aioclient_mock):
     # The entry reloaded with the provider enabled: one lookup happened
     assert aioclient_mock.call_count == 1
     assert hass.data[DOMAIN][entry.entry_id].update_interval.total_seconds() == 30
-    assert hass.states.get("sensor.crowdsec_active_decisions").attributes["decisions"][0]["country"] == "FR"
+    assert _sensor(hass, entry).attributes["decisions"][0]["country"] == "FR"
 
 
 async def test_options_flow_disables_provider(hass, aioclient_mock):
@@ -468,4 +481,4 @@ async def test_options_flow_disables_provider(hass, aioclient_mock):
         await _refresh(hass, entry)
     assert aioclient_mock.call_count == 1
     assert hass.data[DOMAIN][entry.entry_id].geo_provider is None
-    assert all("country" not in d for d in hass.states.get("sensor.crowdsec_active_decisions").attributes["decisions"])
+    assert all("country" not in d for d in _sensor(hass, entry).attributes["decisions"])

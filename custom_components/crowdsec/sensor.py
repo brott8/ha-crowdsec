@@ -86,7 +86,7 @@ class CrowdSecCoordinator(DataUpdateCoordinator[List[Dict[str, Any]]]):
                     identifier, self.entry.entry_id
                 )
             else:
-                # Cores before the method was added (2026.9): the older lookup.
+                # Cores before the method was added (2026.8): the older lookup.
                 device = device_registry.async_get_device(identifiers={identifier})
 
             if not device:
