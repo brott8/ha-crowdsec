@@ -1,6 +1,7 @@
 # sensor.py
 import logging
 from datetime import timedelta
+from ipaddress import ip_address
 from typing import Any, Dict, List, Optional
 
 from homeassistant import config_entries
@@ -17,19 +18,33 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers import device_registry as dr
 
 from .api import CrowdSecApiClient
-from .geo import async_lookup_ips
+from .geo import GeoProvider
 
-from .const import DOMAIN, DEFAULT_SCAN_INTERVAL, EVENT_NEW_DECISION, EVENT_DECISION_REMOVED
+from .const import (
+    DOMAIN,
+    CONF_SCAN_INTERVAL,
+    DEFAULT_SCAN_INTERVAL,
+    EVENT_NEW_DECISION,
+    EVENT_DECISION_REMOVED,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 class CrowdSecCoordinator(DataUpdateCoordinator[List[Dict[str, Any]]]):
     """Coordinates fetching data from the CrowdSec LAPI."""
 
-    def __init__(self, hass: HomeAssistant, api_client: CrowdSecApiClient, entry: config_entries.ConfigEntry):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        api_client: CrowdSecApiClient,
+        entry: config_entries.ConfigEntry,
+        geo_provider: Optional[GeoProvider] = None,
+    ):
         """Initialize the coordinator."""
-        # Get the scan_interval from the entry object that was passed in.
-        scan_interval = entry.data.get("scan_interval", DEFAULT_SCAN_INTERVAL)
+        # Options (from the "Configure" dialog) override the initial setup data.
+        scan_interval = entry.options.get(
+            CONF_SCAN_INTERVAL, entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        )
 
         super().__init__(
             hass,
@@ -41,7 +56,9 @@ class CrowdSecCoordinator(DataUpdateCoordinator[List[Dict[str, Any]]]):
         self.entry = entry # Store the config entry
         # Store the full decision objects from the last successful update
         self._known_decisions: Dict[int, Dict[str, Any]] = {}
-        # Cache for the ip-api.com geolocation lookups
+        # Opt-in geolocation of the banned IPs; None when disabled.
+        self.geo_provider = geo_provider
+        # Cache of the geolocation lookups, one entry per active IP.
         self._geo_cache: Dict[str, Dict[str, Any]] = {}
 
     async def _async_update_data(self) -> list[dict[str, any]]:
@@ -49,8 +66,8 @@ class CrowdSecCoordinator(DataUpdateCoordinator[List[Dict[str, Any]]]):
         # Fetch decisions FIRST. This should always happen.
         decisions = await self.api_client.get_decisions() or []
 
-        # Attach geolocation data (country, latitude, longitude, AS).
-        if decisions:
+        # Attach geolocation data (country, latitude, longitude, AS) when enabled.
+        if decisions and self.geo_provider is not None:
             await self._async_enrich_with_geo(decisions)
 
         # Always perform the comparison logic to see if anything changed.
@@ -96,11 +113,11 @@ class CrowdSecCoordinator(DataUpdateCoordinator[List[Dict[str, Any]]]):
         return decisions
 
     async def _async_enrich_with_geo(self, decisions: List[Dict[str, Any]]) -> None:
-        """Geolocate decision IPs via ip-api.com.
+        """Geolocate the decision IPs with the configured provider.
 
         Results are cached per IP for as long as the decision is active, so
-        each IP is only sent to the external service once. A failing lookup
-        never fails the update; the decisions are just left untouched.
+        each IP is only looked up once. A failing lookup never fails the
+        update; the decisions are just left untouched until the next poll.
         """
         wanted = [
             ip
@@ -108,7 +125,7 @@ class CrowdSecCoordinator(DataUpdateCoordinator[List[Dict[str, Any]]]):
             if ip and ip not in self._geo_cache
         ]
         if wanted:
-            results = await async_lookup_ips(self.api_client.session, wanted)
+            results = await self.geo_provider.async_lookup_ips(wanted)
             if results:
                 self._geo_cache.update(results)
 
@@ -125,15 +142,26 @@ class CrowdSecCoordinator(DataUpdateCoordinator[List[Dict[str, Any]]]):
 
     @staticmethod
     def _decision_ip(decision: Dict[str, Any]) -> Optional[str]:
-        """Return the IP to geolocate for a decision, if any."""
+        """Return the IP to geolocate for a decision, if any.
+
+        Only routable addresses are returned. A decision on a private,
+        loopback or reserved range is never looked up, so such an address
+        is never sent to a remote provider and never yields the junk
+        coordinates some services answer for them.
+        """
         scope = (decision.get("scope") or "").lower()
         value = decision.get("value") or ""
-        if scope == "ip":
-            return value
         if scope == "range":
             # Look up the network address of the banned range.
-            return value.split("/")[0]
-        return None
+            value = value.split("/")[0]
+        elif scope != "ip":
+            return None
+
+        try:
+            address = ip_address(value)
+        except ValueError:
+            return None
+        return value if address.is_global else None
 
 async def async_setup_entry(
     hass: HomeAssistant,
