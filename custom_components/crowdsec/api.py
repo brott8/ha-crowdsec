@@ -4,7 +4,6 @@ import logging
 from typing import List, Dict, Any
 
 import aiohttp
-import async_timeout
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,7 +20,7 @@ class CrowdSecApiClient:
     async def get_decisions(self) -> List[Dict[str, Any]]:
         """Fetch active decisions from the LAPI."""
         try:
-            with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 async with self.session.get(self._url, headers=self._headers) as resp:
                     resp.raise_for_status() # Aiohttp's way to raise on 4xx/5xx
                     data = await resp.json()
