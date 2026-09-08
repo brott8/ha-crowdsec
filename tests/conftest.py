@@ -11,6 +11,17 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 
 
 @pytest.fixture(autouse=True)
+def mock_frontend_dependencies(hass):
+    """Pretend http, frontend and lovelace are set up.
+
+    The card branch depends on them; the test core has no frontend
+    package. The tests that need hass.http or Lovelace provide stand-ins.
+    """
+    hass.config.components.update({"http", "frontend", "lovelace"})
+    yield
+
+
+@pytest.fixture(autouse=True)
 def mock_frontend(request):
     """Stub the bundled-card registration, which needs hass.http and Lovelace.
 

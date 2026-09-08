@@ -80,9 +80,14 @@ class CrowdSecCoordinator(DataUpdateCoordinator[List[Dict[str, Any]]]):
         # If there are events to fire, find the device and fire them.
         if new_ids or removed_ids:
             device_registry = dr.async_get(self.hass)
-            device = device_registry.async_get_device_by_identifier(
-                (DOMAIN, self.entry.entry_id), self.entry.entry_id
-            )
+            identifier = (DOMAIN, self.entry.entry_id)
+            if hasattr(device_registry, "async_get_device_by_identifier"):
+                device = device_registry.async_get_device_by_identifier(
+                    identifier, self.entry.entry_id
+                )
+            else:
+                # Cores before the method was added (2026.9): the older lookup.
+                device = device_registry.async_get_device(identifiers={identifier})
 
             if not device:
                 _LOGGER.warning("Device not found, cannot fire events for this update.")

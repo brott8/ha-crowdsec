@@ -22,7 +22,6 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
 
 import aiohttp
-import async_timeout
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -109,7 +108,7 @@ class RemoteJsonGeoProvider(GeoProvider):
             chunk = ips[start : start + self.BATCH_SIZE]
             method, url, body = self._request(chunk)
             try:
-                async with async_timeout.timeout(self.TIMEOUT):
+                async with asyncio.timeout(self.TIMEOUT):
                     async with self._session.request(method, url, json=body) as resp:
                         resp.raise_for_status()
                         data = await resp.json()
