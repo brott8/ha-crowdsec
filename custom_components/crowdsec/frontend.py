@@ -31,8 +31,12 @@ class JSModuleRegistration:
 
     def __init__(self, hass: HomeAssistant) -> None:
         self.hass = hass
-        self.lovelace = hass.data.get(LOVELACE_DATA)
         self._version = FALLBACK_VERSION
+
+    @property
+    def lovelace(self):
+        """The Lovelace component, read when needed: it loads after us."""
+        return self.hass.data.get(LOVELACE_DATA)
 
     async def _async_version(self) -> str:
         """The manifest version, used as the ?v= cache buster."""
@@ -52,7 +56,15 @@ class JSModuleRegistration:
 
     async def async_register(self) -> None:
         """Serve the files, then declare the card resource."""
-        await self._async_register_path()
+        if await self.async_register_path():
+            await self.async_register_resource()
+
+    async def async_register_resource(self) -> None:
+        """Declare the card in the Lovelace resources (storage mode only).
+
+        Needs the Lovelace resource collection, which only exists once
+        Home Assistant has started.
+        """
         version = await self._async_version()
 
         if self.lovelace is None:
@@ -75,13 +87,24 @@ class JSModuleRegistration:
 
         await self._async_register_modules()
 
-    async def _async_register_path(self) -> None:
+    async def async_register_path(self) -> bool:
         """Serve the files, one static path per module.
 
         Files, never the folder holding them: static paths are served
-        outside Home Assistant authentication.
+        outside Home Assistant authentication. Returns False when the
+        files are missing, so the caller does not declare a resource that
+        would only yield a 404.
         """
         www = Path(__file__).parent / "www"
+        missing = await self.hass.async_add_executor_job(self._missing_files, www)
+        if missing:
+            _LOGGER.error(
+                "Card files missing in %s: %s. The card cannot be served; "
+                "reinstall the integration to restore them",
+                www,
+                ", ".join(missing),
+            )
+            return False
         try:
             await self.hass.http.async_register_static_paths(
                 [
@@ -93,9 +116,17 @@ class JSModuleRegistration:
                     for module in JSMODULES
                 ]
             )
-            _LOGGER.debug("Static path registered: %s", URL_BASE)
-        except (RuntimeError, ValueError):
-            _LOGGER.debug("Static path already registered: %s", URL_BASE)
+        except (RuntimeError, ValueError) as err:
+            # Already registered by a previous load of the entry.
+            _LOGGER.debug("Static path already registered (%s): %s", URL_BASE, err)
+            return True
+        _LOGGER.info("Serving the CrowdSec card at %s", URL_BASE)
+        return True
+
+    @staticmethod
+    def _missing_files(www: Path) -> list[str]:
+        """Names of the card files absent from the www folder."""
+        return [m["filename"] for m in JSMODULES if not (www / m["filename"]).is_file()]
 
     async def _async_load_resources(self) -> None:
         """Load the resource collection from storage if needed."""

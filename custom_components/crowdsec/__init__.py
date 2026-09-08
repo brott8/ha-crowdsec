@@ -31,17 +31,31 @@ _LOGGER = logging.getLogger(__name__)
 async def _async_setup_frontend(hass: HomeAssistant) -> None:
     """Serve the bundled Lovelace card and declare its resource.
 
-    Before EVENT_HOMEASSISTANT_STARTED the Lovelace resource collection
-    does not exist and a registration would be silently lost, so wait
-    for the start - unless Home Assistant is already running (an
-    installation made from the UI must show the card without a restart).
+    The files are served on every load of an entry, right away: this only
+    needs the http component, so it never depends on the startup event.
+    Declaring the Lovelace resource does: before EVENT_HOMEASSISTANT_STARTED
+    the resource collection does not exist and a registration would be
+    silently lost, so that part waits for the start - unless Home
+    Assistant is already running (an installation made from the UI must
+    show the card without a restart).
     """
+    registration = JSModuleRegistration(hass)
+    if not await registration.async_register_path():
+        return
+
     if hass.data[DOMAIN].get("frontend_registered"):
         return
     hass.data[DOMAIN]["frontend_registered"] = True
 
     async def _register(_event=None) -> None:
-        await JSModuleRegistration(hass).async_register()
+        try:
+            await registration.async_register_resource()
+        except Exception:  # noqa: BLE001 - keep the integration alive, retry on reload
+            hass.data[DOMAIN]["frontend_registered"] = False
+            _LOGGER.exception(
+                "Declaring the CrowdSec card resource failed; reload the "
+                "integration to try again"
+            )
 
     if hass.state is CoreState.running:
         await _register()
