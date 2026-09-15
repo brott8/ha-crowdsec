@@ -4,9 +4,11 @@ import logging
 from typing import List, Dict, Any
 
 import aiohttp
-import async_timeout
 
 _LOGGER = logging.getLogger(__name__)
+
+# CrowdSec expects its API clients to send a single name/version value.
+USER_AGENT = "homeassistant-crowdsec/1.0"
 
 class CrowdSecApiClient:
     """A client for the CrowdSec LAPI."""
@@ -14,14 +16,17 @@ class CrowdSecApiClient:
     def __init__(self, scheme: str, host: str, port: int, api_key: str, unique_id: str, session: aiohttp.ClientSession):
         """Initialize the API client."""
         self._url = f"{scheme}://{host}:{port}/v1/decisions?origins=crowdsec,cscli"
-        self._headers = {"X-Api-Key": api_key}
+        self._headers = {
+            "X-Api-Key": api_key,
+            "User-Agent": USER_AGENT,
+        }
         self.session = session
         self.unique_id = unique_id
 
     async def get_decisions(self) -> List[Dict[str, Any]]:
         """Fetch active decisions from the LAPI."""
         try:
-            with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 async with self.session.get(self._url, headers=self._headers) as resp:
                     resp.raise_for_status() # Aiohttp's way to raise on 4xx/5xx
                     data = await resp.json()

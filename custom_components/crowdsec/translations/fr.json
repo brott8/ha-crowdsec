@@ -9,7 +9,11 @@
           "port": "Port",
           "api_key": "Clé d'API",
           "scheme": "Protocole (http ou https)",
-          "scan_interval": "Intervalle de scan (secondes)"
+          "scan_interval": "Intervalle de scan (secondes)",
+          "geo_provider": "Géolocalisation des IP bannies"
+        },
+        "data_description": {
+          "geo_provider": "Désactivée par défaut : aucune IP bannie ne quitte Home Assistant. Le fournisseur local lit crowdsec/GeoLite2-City.mmdb (et, s'il est présent, GeoLite2-ASN.mmdb) dans le dossier de configuration, hors ligne ; un fournisseur distant envoie les IP bannies à ce service tiers."
         }
       }
     },
@@ -26,8 +30,22 @@
       "init": {
         "title": "Options de CrowdSec LAPI",
         "data": {
-          "scan_interval": "Fréquence de mise à jour (secondes)"
+          "scan_interval": "Fréquence de mise à jour (secondes)",
+          "geo_provider": "Géolocalisation des IP bannies"
+        },
+        "data_description": {
+          "geo_provider": "Désactivée par défaut : aucune IP bannie ne quitte Home Assistant. Le fournisseur local lit crowdsec/GeoLite2-City.mmdb (et, s'il est présent, GeoLite2-ASN.mmdb) dans le dossier de configuration, hors ligne ; un fournisseur distant envoie les IP bannies à ce service tiers."
         }
+      }
+    }
+  },
+  "selector": {
+    "geo_provider": {
+      "options": {
+        "none": "Désactivée",
+        "geolite2_file": "Fichier GeoLite2 (local, hors ligne, gratuit)",
+        "ipquery": "ipquery.io (distant, HTTPS, gratuit)",
+        "ip_api": "ip-api.com (distant, HTTP, gratuit)"
       }
     }
   },
