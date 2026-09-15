@@ -19,7 +19,7 @@ This is a custom integration for Home Assistant that connects to a CrowdSec Loca
 
         These are the very files CrowdSec downloads into its own data directory (usually `/var/lib/crowdsec/data`) as soon as the `crowdsecurity/geoip-enrich` parser is installed, and refreshes on `cscli hub upgrade`: copy them from there, or download them from [MaxMind](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) with a free account (a new build is published twice a week). Home Assistant in a container does not see the CrowdSec filesystem, hence the copy. A file replaced on disk is detected and reopened on the next poll, without restarting Home Assistant. If the City file is missing, an error in the log says where it is expected and the decisions are simply left without geo data.
 
-        The integration never downloads anything itself; to keep the files fresh without manual work, let a Home Assistant automation do it. The command below fetches CrowdSec's own copies (no account, no key), writes to a temporary name and renames at the end, so the integration never sees a half-written file; it picks the new one up on its next poll.
+        The integration never downloads anything itself; to keep the files fresh without manual work, let a Home Assistant automation do it. The command below fetches CrowdSec's own copies (no account, no key), writes to a temporary name and renames at the end, so the integration never sees a half-written file; it picks the new one up on its next poll. Note that it requires the Home Assistant runtime to support `shell_command`, have `curl` and outbound HTTPS access, and be able to write to `/config/crowdsec`. If those requirements are unavailable, update the files manually or use a scheduled job on the host that copies them into the Home Assistant configuration directory.
 
         ```yaml
         shell_command:
@@ -41,8 +41,6 @@ This is a custom integration for Home Assistant that connects to a CrowdSec Loca
             action:
               - service: shell_command.crowdsec_geolite2_update
         ```
-
-        This optional automation downloads the databases directly from CrowdSec's hub; it does **not** access the CrowdSec container or its configuration files. It requires the Home Assistant runtime to support `shell_command`, have `curl` and outbound HTTPS access, and be able to write to `/config/crowdsec`. If those requirements are unavailable, update the files manually or use a scheduled job on the host that copies them into the Home Assistant configuration directory.
 
         Run the command once from **Developer tools** > **Actions** to get the first copy. For databases straight from MaxMind (refreshed twice a week), use their download URL with your account id and license key instead; it delivers a `tar.gz` to extract.
     -   **ipquery.io**: remote lookup over **HTTPS** via [ipquery.io](https://ipquery.io), no API key. The banned IPs are sent to that third-party service, but on a ciphered connection. Quota: the service advertises an unlimited free tier and throttles with an HTTP 429 answer when it judges the traffic excessive, without publishing a figure; its bulk endpoint takes up to 10,000 IPs per request. The integration sends batches of 50 IPs and at most 5 batches per scan, each IP only once, so even an initial sync of 250 active bans fits in a single poll and the rest follows on the next ones.
@@ -124,5 +122,3 @@ content: |
   | No active decisions | | | |
   {%- endif %}
 ```
-
-The `default('?', true)` filter keeps the card rendering a `?` instead of an error when the geo data is missing (geolocation disabled, private IPs, or a lookup that has not completed yet).
