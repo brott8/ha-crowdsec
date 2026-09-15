@@ -7,13 +7,19 @@ import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
 
+# CrowdSec expects its API clients to send a single name/version value.
+USER_AGENT = "homeassistant-crowdsec/1.0"
+
 class CrowdSecApiClient:
     """A client for the CrowdSec LAPI."""
 
     def __init__(self, scheme: str, host: str, port: int, api_key: str, unique_id: str, session: aiohttp.ClientSession):
         """Initialize the API client."""
         self._url = f"{scheme}://{host}:{port}/v1/decisions?origins=crowdsec,cscli"
-        self._headers = {"X-Api-Key": api_key}
+        self._headers = {
+            "X-Api-Key": api_key,
+            "User-Agent": USER_AGENT,
+        }
         self.session = session
         self.unique_id = unique_id
 
