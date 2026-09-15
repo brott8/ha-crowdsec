@@ -1,5 +1,7 @@
 """Tests for the opt-in geolocation of the CrowdSec integration."""
+import asyncio
 import sys
+from time import monotonic
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -146,6 +148,72 @@ async def test_ip_api_lookup(hass, aioclient_mock):
 async def test_ip_api_lookup_network_failure(hass, aioclient_mock):
     aioclient_mock.post(IpApiGeoProvider.BATCH_URL, status=500)
     assert await IpApiGeoProvider(hass).async_lookup_ips(["1.2.3.4"]) is None
+
+
+async def test_ip_api_rate_limit_defers_additional_requests(hass, aioclient_mock):
+    """The rolling request limit applies across coordinator refreshes."""
+    aioclient_mock.post(IpApiGeoProvider.BATCH_URL, json=IP_API_RESPONSE)
+    provider = IpApiGeoProvider(hass)
+    provider.MAX_REQUESTS_PER_WINDOW = 1
+
+    assert await provider.async_lookup_ips(["1.2.3.4"])
+    assert await provider.async_lookup_ips(["5.6.7.0"]) is None
+    assert aioclient_mock.call_count == 1
+
+
+async def test_ip_api_honors_retry_after(hass, aioclient_mock):
+    """A 429 response defers requests until after Retry-After expires."""
+    aioclient_mock.post(
+        IpApiGeoProvider.BATCH_URL,
+        status=429,
+        headers={"Retry-After": "120"},
+    )
+    provider = IpApiGeoProvider(hass)
+    started = monotonic()
+
+    assert await provider.async_lookup_ips(["1.2.3.4"]) is None
+    assert provider._retry_after >= started + 119
+    assert await provider.async_lookup_ips(["5.6.7.0"]) is None
+    assert aioclient_mock.call_count == 1
+
+
+class _SlowResponse:
+    """Response context manager that exceeds the configured total deadline."""
+
+    status = 200
+    headers = {}
+
+    async def __aenter__(self):
+        await asyncio.sleep(0.2)
+        return self
+
+    async def __aexit__(self, *_):
+        return False
+
+    def raise_for_status(self):
+        pass
+
+    async def json(self):
+        return []
+
+
+class _SlowSession:
+    """Session that returns a deliberately slow response."""
+
+    def request(self, *_args, **_kwargs):
+        return _SlowResponse()
+
+
+async def test_remote_lookup_uses_total_deadline(hass):
+    """Slow batches cannot delay a coordinator refresh by every batch timeout."""
+    provider = IpQueryGeoProvider(hass)
+    provider._session = _SlowSession()
+    provider.TOTAL_TIMEOUT = 0.02
+    provider.TIMEOUT = 1
+    started = monotonic()
+
+    assert await provider.async_lookup_ips(["1.2.3.4"]) is None
+    assert monotonic() - started < 0.1
 
 
 # --------------------------------------------------------- ipquery.io ----

@@ -18,6 +18,7 @@ class IpApiGeoProvider(RemoteJsonGeoProvider):
     ID = "ip_api"
     LABEL = "ip-api.com (remote, HTTP, free)"
     PRIORITY = 30
+    MAX_REQUESTS_PER_WINDOW = 15
 
     BATCH_URL = (
         "http://ip-api.com/batch?fields=status,countryCode,lat,lon,as,asname,query"
