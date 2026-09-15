@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Harnais de capture — crowdsec-card</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --card-background-color: #ffffff;
+    --primary-text-color: #212121;
+    --secondary-text-color: #727272;
+    --divider-color: rgba(0, 0, 0, 0.09);
+    --secondary-background-color: #f1f1f3;
+    --code-font-family: "Roboto Mono", ui-monospace, monospace;
+    --ha-card-border-radius: 12px;
+    --ha-card-border-color: #e0e0e0;
+    --page-bg: #fafafa;
+  }
+  :root.dark {
+    --card-background-color: #1c1c1c;
+    --primary-text-color: #e1e1e1;
+    --secondary-text-color: #9b9b9b;
+    --divider-color: rgba(255, 255, 255, 0.10);
+    --secondary-background-color: #2a2a2d;
+    --ha-card-border-color: #383838;
+    --page-bg: #111111;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: Roboto, "Segoe UI", system-ui, sans-serif;
+    background: var(--page-bg);
+    color: var(--primary-text-color);
+    -webkit-font-smoothing: antialiased;
+  }
+  #stage { padding: 20px; display: grid; grid-auto-flow: column; gap: 18px; justify-content: center; align-content: start; }
+  .cell { display: flex; flex-direction: column; gap: 6px; }
+  .caption {
+    font-size: 13px; font-weight: 500; color: var(--secondary-text-color);
+    display: flex; align-items: center; gap: 7px; padding-left: 2px;
+  }
+  .caption .swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  #fatal { color: #e01f1f; font: 13px monospace; white-space: pre-wrap; padding: 12px; }
+</style>
+</head>
+<body>
+<div id="fatal"></div>
+<div id="stage"></div>
+
+<script>
+/* ── Stub de l'élément ha-card de Home Assistant ───────────────────────── */
+class HaCard extends HTMLElement {
+  connectedCallback() {
+    const s = this.style;
+    s.display = "block";
+    s.background = "var(--card-background-color)";
+    s.borderRadius = "var(--ha-card-border-radius, 12px)";
+    s.border = "1px solid var(--ha-card-border-color, rgba(0,0,0,0.12))";
+    s.color = "var(--primary-text-color)";
+    s.position = "relative";
+    s.overflow = "hidden";
+  }
+}
+customElements.define("ha-card", HaCard);
+window.addEventListener("error", (e) => {
+  // Avertissement bénin du navigateur, sans conséquence sur le rendu.
+  if (/ResizeObserver loop/.test(e.message)) return;
+  document.getElementById("fatal").textContent += e.message + "\n";
+});
+</script>
+
+<script type="module">
+/* La vraie carte, telle que livrée dans le composant, + jeu de données. */
+import "../custom_components/crowdsec/www/crowdsec-card.js";
+import { generateDecisions } from "./demo-data.js";
+
+const params = new URLSearchParams(location.search);
+const page = params.get("page") || "hero";
+const dark = params.get("mode") === "dark";
+document.documentElement.classList.toggle("dark", dark);
+
+const decisions = generateDecisions();
+const hass = {
+  language: params.get("lang") || "fr",
+  themes: { darkMode: dark },
+  states: {
+    "sensor.crowdsec_active_decisions": {
+      entity_id: "sensor.crowdsec_active_decisions",
+      state: String(decisions.length),
+      attributes: { decisions },
+      last_updated: new Date().toISOString(),
+    },
+  },
+};
+
+function addCard(config, { width = 380, caption = null, swatch = null } = {}) {
+  const cell = document.createElement("div");
+  cell.className = "cell";
+  cell.style.width = `${width}px`;
+  if (caption) {
+    const cap = document.createElement("div");
+    cap.className = "caption";
+    cap.innerHTML = (swatch ? `<span class="swatch" style="background:${swatch}"></span>` : "") + caption;
+    cell.appendChild(cap);
+  }
+  const card = document.createElement("crowdsec-card");
+  card.setConfig(config);
+  cell.appendChild(card);
+  document.getElementById("stage").appendChild(cell);
+  card.hass = hass;
+  return card;
+}
+
+const PAGES = {
+  hero: () => addCard({}, { width: 900 }),
+  views: () => {
+    addCard({}, { caption: "view: auto (colonne étroite)" });
+    addCard({ view: "map" }, { caption: "view: map" });
+  },
+  palettes: () => {
+    addCard({ palette: "menace", view: "map" }, { caption: "menace", swatch: "#a94e17" });
+    addCard({ palette: "ocean", view: "map" }, { caption: "océan", swatch: "#3f73b4" });
+    addCard({ palette: "amethyste", view: "map" }, { caption: "améthyste", swatch: "#8351b3" });
+  },
+  compact: () => addCard({ view: "list" }, {}),
+};
+(PAGES[page] || PAGES.hero)();
+</script>
+</body>
+</html>
