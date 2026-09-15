@@ -42,6 +42,8 @@ This is a custom integration for Home Assistant that connects to a CrowdSec Loca
               - service: shell_command.crowdsec_geolite2_update
         ```
 
+        This optional automation downloads the databases directly from CrowdSec's hub; it does **not** access the CrowdSec container or its configuration files. It requires the Home Assistant runtime to support `shell_command`, have `curl` and outbound HTTPS access, and be able to write to `/config/crowdsec`. If those requirements are unavailable, update the files manually or use a scheduled job on the host that copies them into the Home Assistant configuration directory.
+
         Run the command once from **Developer tools** > **Actions** to get the first copy. For databases straight from MaxMind (refreshed twice a week), use their download URL with your account id and license key instead; it delivers a `tar.gz` to extract.
     -   **ipquery.io**: remote lookup over **HTTPS** via [ipquery.io](https://ipquery.io), no API key. The banned IPs are sent to that third-party service, but on a ciphered connection. Quota: the service advertises an unlimited free tier and throttles with an HTTP 429 answer when it judges the traffic excessive, without publishing a figure; its bulk endpoint takes up to 10,000 IPs per request. The integration sends batches of 50 IPs and at most 5 batches per scan, each IP only once, so even an initial sync of 250 active bans fits in a single poll and the rest follows on the next ones.
     -   **ip-api.com**: remote lookup via the free [ip-api.com](https://ip-api.com) service, no API key. **Privacy note**: the free endpoint refuses HTTPS, so the banned IPs travel in clear text. Quota: the free tier is limited to 15 batch requests per rolling minute, 100 IPs per batch, for non-commercial use, and answers HTTP 429 beyond that. The integration enforces this limit, honours the `Retry-After` header, and defers remaining lookups to later polls. Remote lookups are also bounded to 8 seconds per poll, so an unavailable provider cannot delay decision updates.
@@ -123,8 +125,4 @@ content: |
   {%- endif %}
 ```
 
-The `default('?', true)` filter keeps the card rendering a `?` instead of an error when the geo data is missing (geolocation disabled, private IPs, or a lookup that has not completed yet). With the coordinates you can even link each ban to a map — guard on `latitude` so rows without geo data fall back to plain text:
-
-```yaml
-| `{{ decision.value }}` | {% if decision.latitude is defined %}[{{ decision.country | default('?', true) }}](https://www.openstreetmap.org/?mlat={{ decision.latitude }}&mlon={{ decision.longitude }}#map=6/{{ decision.latitude }}/{{ decision.longitude }}){% else %}{{ decision.country | default('?', true) }}{% endif %} | {{ decision.scenario }} |
-```
+The `default('?', true)` filter keeps the card rendering a `?` instead of an error when the geo data is missing (geolocation disabled, private IPs, or a lookup that has not completed yet).
