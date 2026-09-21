@@ -21,7 +21,8 @@ chrome --headless=new --disable-gpu --allow-file-access-from-files \
 | `palettes` | les 3 palettes du dégradé, `view: map` | 1260,485 |
 | `compact` | `view: list`, liste seule | 460,440 |
 
-Chaque page existe en `mode=light` et `mode=dark` (`&lang=en` disponible).
+Chaque page existe en `mode=light` et `mode=dark` (`&lang=en` disponible,
+`&geo=off` simule l'intégration sans fournisseur de géolocalisation).
 Les fichiers vont dans `images/` sous le nom `<page>-<mode>.png`.
 
 La mapmonde vient de `custom_components/crowdsec/www/world-map.js`, généré

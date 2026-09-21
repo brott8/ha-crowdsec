@@ -24,7 +24,8 @@ const ZERO = { light: "#ececef", dark: "#2b2b2f" };
 
 const STRINGS = {
   fr: {
-    subtitle: (b, i, p) => `${b} ban${b > 1 ? "s" : ""} actif${b > 1 ? "s" : ""} · ${i} IP · ${p} pays`,
+    subtitle: (b, i, p) =>
+      `${b} ban${b > 1 ? "s" : ""} actif${b > 1 ? "s" : ""} · ${i} IP` + (p === null ? "" : ` · ${p} pays`),
     manual: "manuel",
     remaining: "restant",
     top: "Top pays",
@@ -33,9 +34,12 @@ const STRINGS = {
     bans: (n) => `${n} ban${n > 1 ? "s" : ""}`,
     filterHint: "Cliquer sur un pays filtre la liste",
     legend20: "20 et +",
+    geoOff: "Géolocalisation désactivée : la carte du monde a besoin d'un fournisseur, à choisir dans « Configurer » de l'intégration CrowdSec.",
   },
   en: {
-    subtitle: (b, i, p) => `${b} active ban${b > 1 ? "s" : ""} · ${i} IP${i > 1 ? "s" : ""} · ${p} countr${p > 1 ? "ies" : "y"}`,
+    subtitle: (b, i, p) =>
+      `${b} active ban${b > 1 ? "s" : ""} · ${i} IP${i > 1 ? "s" : ""}` +
+      (p === null ? "" : ` · ${p} countr${p > 1 ? "ies" : "y"}`),
     manual: "manual",
     remaining: "left",
     top: "Top countries",
@@ -44,6 +48,7 @@ const STRINGS = {
     bans: (n) => `${n} ban${n > 1 ? "s" : ""}`,
     filterHint: "Click a country to filter the list",
     legend20: "20+",
+    geoOff: "Geolocation is disabled: the world map needs a provider, picked from the CrowdSec integration's Configure dialog.",
   },
 };
 
@@ -208,7 +213,13 @@ class CrowdsecCard extends HTMLElement {
     const accent = steps[this._dark ? 4 : 3];
     const accentBg = tint(accent, this._dark ? 0.14 : 0.12);
     const showMap = this._config.show_map !== false;
-    const viewCfg = showMap ? this._config.view || "auto" : "list";
+    const wantedView = showMap ? this._config.view || "auto" : "list";
+    // Geolocation is opt-in: without it no ban has a country, so the map
+    // would stay blank. Fall back to the list and say why, unless the list
+    // was asked for anyway. An absent attribute (older integration) counts
+    // as enabled.
+    const geoOff = stateObj.attributes.geolocation === false;
+    const viewCfg = geoOff ? "list" : wantedView;
     const wide = this._wide && viewCfg === "auto";
 
     const style = `
@@ -246,6 +257,8 @@ class CrowdsecCard extends HTMLElement {
         .row-right { display: flex; flex-direction: column; gap: 2px; align-items: flex-end; flex: 0 0 auto; }
         .left { font-size: 12.5px; font-weight: 500; color: var(--primary-text-color); }
         .left-sub { font-size: 10.5px; color: var(--secondary-text-color); opacity: 0.8; }
+        .notice { font-size: 12px; line-height: 1.4; color: var(--secondary-text-color); padding: 8px 10px;
+          border-radius: 8px; background: var(--secondary-background-color); }
         .empty { padding: 24px 0; text-align: center; font-size: 13px; color: var(--secondary-text-color); }
         .map-wrap { position: relative; }
         .map-wrap svg { display: block; width: 100%; height: auto; }
@@ -292,7 +305,7 @@ class CrowdsecCard extends HTMLElement {
         <div class="icon-tile">${SHIELD}</div>
         <div class="titles">
           <span class="title">${esc(titleCfg || "CrowdSec")}</span>
-          <span class="subtitle">${esc(t.subtitle(decisions.length, ipCount, countryCount))}</span>
+          <span class="subtitle">${esc(t.subtitle(decisions.length, ipCount, geoOff ? null : countryCount))}</span>
         </div>
       </div>`;
 
@@ -325,7 +338,7 @@ class CrowdsecCard extends HTMLElement {
               .join(" · ");
             const rem = fmtRemaining(g.remaining);
             return `<div class="row">
-              ${flag(g.country)}
+              ${geoOff ? "" : flag(g.country)}
               <div class="row-main">
                 <div class="ip-line">
                   <span class="ip">${esc(g.value)}</span>
@@ -395,7 +408,8 @@ class CrowdsecCard extends HTMLElement {
     } else if (viewCfg === "map") {
       body = `${header}${mapCol}`;
     } else if (viewCfg === "list") {
-      body = `${header}${rows}`;
+      const notice = geoOff && wantedView !== "list" ? `<div class="notice">${esc(t.geoOff)}</div>` : "";
+      body = `${header}${notice}${rows}`;
     } else {
       // auto on a narrow column: map stacked above the list.
       body = `${header}${mapSvg}${legend}${rows}`;

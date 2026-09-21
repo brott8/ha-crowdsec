@@ -206,5 +206,9 @@ class CrowdSecSensor(CoordinatorEntity[CrowdSecCoordinator], SensorEntity):
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return the decisions as attributes."""
-        return {"decisions": self.coordinator.data or []}
+        """Return the decisions, and whether they carry geolocation data."""
+        return {
+            "decisions": self.coordinator.data or [],
+            # Lets a card tell "geolocation disabled" from "not located yet".
+            "geolocation": self.coordinator.geo_provider is not None,
+        }

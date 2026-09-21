@@ -79,7 +79,13 @@ const page = params.get("page") || "hero";
 const dark = params.get("mode") === "dark";
 document.documentElement.classList.toggle("dark", dark);
 
-const decisions = generateDecisions();
+// geo=off: the integration without a geolocation provider (no country).
+const geoOff = params.get("geo") === "off";
+const decisions = generateDecisions().map((d) => {
+  if (!geoOff) return d;
+  const { country, latitude, longitude, as_name, as_number, ...rest } = d;
+  return rest;
+});
 const hass = {
   language: params.get("lang") || "fr",
   themes: { darkMode: dark },
@@ -87,7 +93,7 @@ const hass = {
     "sensor.crowdsec_active_decisions": {
       entity_id: "sensor.crowdsec_active_decisions",
       state: String(decisions.length),
-      attributes: { decisions },
+      attributes: { decisions, geolocation: !geoOff },
       last_updated: new Date().toISOString(),
     },
   },

@@ -7,7 +7,7 @@ This is a custom integration for Home Assistant that connects to a CrowdSec Loca
 ## Features
 
 -   **Active Decisions Sensor**: Provides a `sensor.crowdsec_active_decisions` entity whose state is the total count of current bans.
--   **Detailed Attributes**: The sensor's attributes contain a full list of all active decisions, including the banned IP/value, the reason for the ban (scenario), and its duration.
+-   **Detailed Attributes**: The sensor's attributes contain a full list of all active decisions, including the banned IP/value, the reason for the ban (scenario), and its duration. A `geolocation` attribute (`true`/`false`) tells whether a geolocation provider is enabled.
 -   **Geolocation (opt-in)**: Each decision can be enriched with `country`, `latitude`, `longitude`, `as_name` and `as_number`, available both in the sensor attributes and in the event payloads. This also covers decisions created before installing this integration and manual `cscli decisions add` bans. Geolocation is **disabled by default**: no banned IP leaves Home Assistant unless you pick a provider, either in the setup form or later from the integration's **Configure** dialog. Each IP is resolved only once and cached while the decision is active, and only routable addresses are resolved: private, loopback and reserved ranges are never looked up and never sent anywhere.
     -   **Disabled** (default): no lookup at all.
     -   **Local GeoLite2 database file**: resolves the IPs offline against MaxMind `.mmdb` files, so nothing leaves Home Assistant. **No database is shipped with this integration, and none is downloaded**: the integration only adds the `maxminddb` reader library (about 100 KB, code only, no data), and opens, read-only, the files you put at one fixed place inside your configuration directory:
@@ -89,6 +89,8 @@ type: custom:crowdsec-card
 ```
 
 The card shows the active bans as a list grouped by IP (flag, country, the aggregated scenarios, a ×N badge when an IP carries several bans, and the longest time remaining) and as a world map colored by the number of bans per country, with a hover tooltip and click-to-filter. It follows the active Home Assistant theme (light and dark) automatically.
+
+The country, flag and world map come from the [geolocation](#features), which is disabled by default. Without a provider the card shows the list only, with a short note saying where to enable one (no note with `view: list`).
 
 All options (also available in the visual card editor):
 
