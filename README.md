@@ -7,7 +7,7 @@ This is a custom integration for Home Assistant that connects to a CrowdSec Loca
 ## Features
 
 -   **Active Decisions Sensor**: Provides a `sensor.crowdsec_active_decisions` entity whose state is the total count of current bans.
--   **Detailed Attributes**: The sensor's attributes contain a full list of all active decisions, including the banned IP/value, the reason for the ban (scenario), and its duration.
+-   **Detailed Attributes**: The sensor's attributes contain a full list of all active decisions, including the banned IP/value, the reason for the ban (scenario), and its duration. A `geolocation` attribute (`true`/`false`) tells whether a geolocation provider is enabled.
 -   **Geolocation (opt-in)**: Each decision can be enriched with `country`, `latitude`, `longitude`, `as_name` and `as_number`, available both in the sensor attributes and in the event payloads. This also covers decisions created before installing this integration and manual `cscli decisions add` bans. Geolocation is **disabled by default**: no banned IP leaves Home Assistant unless you pick a provider, either in the setup form or later from the integration's **Configure** dialog. Each IP is resolved only once and cached while the decision is active, and only routable addresses are resolved: private, loopback and reserved ranges are never looked up and never sent anywhere.
     -   **Disabled** (default): no lookup at all.
     -   **Local GeoLite2 database file**: resolves the IPs offline against MaxMind `.mmdb` files, so nothing leaves Home Assistant. **No database is shipped with this integration, and none is downloaded**: the integration only adds the `maxminddb` reader library (about 100 KB, code only, no data), and opens, read-only, the files you put at one fixed place inside your configuration directory:
@@ -78,6 +78,54 @@ After either installation method, **restart Home Assistant**.
 4.  Click **Submit**. The integration will be set up, and a sensor entity will be created.
 5.  The update frequency and the geolocation provider can be changed at any time from the integration's **Configure** button (the integration reloads automatically).
 
+## Lovelace Card
+
+![CrowdSec card, wide layout](images/hero-light.png)
+
+The integration bundles a custom Lovelace card and registers it automatically — nothing to install, no resource to declare (requires Home Assistant 2024.7 or newer; refresh your browser after the first restart). Minimal usage:
+
+```yaml
+type: custom:crowdsec-card
+```
+
+The card shows the active bans as a list grouped by IP (flag, country, the aggregated scenarios, a ×N badge when an IP carries several bans, and the longest time remaining) and as a world map colored by the number of bans per country, with a hover tooltip and click-to-filter. It follows the active Home Assistant theme (light and dark) automatically.
+
+The country, flag and world map come from the [geolocation](#features), which is disabled by default. Without a provider the card shows the list only, with a short note saying where to enable one (no note with `view: list`).
+
+All options (also available in the visual card editor):
+
+| Option | Default | Description |
+|:---|:---|:---|
+| `entity` | auto-detected | The CrowdSec decisions sensor. |
+| `title` | `CrowdSec` | Card title. An explicitly empty title (`title: ""`) hides the header. |
+| `view` | `auto` | `auto` (map above the list on narrow columns, side by side when the card is wide enough), `list` (list only), `map` (map only). |
+| `palette` | `menace` | Map gradient: `menace` (red-orange), `ocean` (blue), `amethyste` (purple). |
+
+Full example with every option set:
+
+```yaml
+type: custom:crowdsec-card
+entity: sensor.crowdsec_active_decisions
+title: CrowdSec
+view: auto
+palette: ocean
+```
+
+Compact list-only variant (for narrow columns):
+
+```yaml
+type: custom:crowdsec-card
+view: list
+```
+
+(The former `show_map: false` option is still honored and behaves like `view: list`.)
+
+The three palettes, on the dark theme:
+
+![The three gradient palettes](images/palettes-dark.png)
+
+Notes: the world map (Natural Earth, 110m) is embedded in the card — no external requests; country flags are loaded from flagcdn.com and fall back to the country code when offline. The map shapes can be regenerated with `python tools/generate_world_map.py`; the screenshots come from `docs/screenshot-harness.html` (see `docs/CAPTURES.md`).
+
 ## Usage
 
 ### Automation Examples
@@ -103,9 +151,9 @@ action:
 mode: single
 ```
 
-#### **Lovelace Dashboard Card**
+#### **Markdown Card (alternative)**
 
-You can easily display the list of active decisions on your dashboard using a Markdown card.
+If you prefer not to use the bundled `custom:crowdsec-card`, you can display the list of active decisions with a plain Markdown card.
 
 ```yaml
 type: markdown

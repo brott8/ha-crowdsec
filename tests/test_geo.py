@@ -420,6 +420,7 @@ async def test_default_is_no_lookup(hass, aioclient_mock):
     assert state.state == "3"
     assert aioclient_mock.call_count == 0
     assert all("country" not in d for d in state.attributes["decisions"])
+    assert state.attributes["geolocation"] is False
 
 
 async def test_enrichment_cache_and_private_addresses(hass, aioclient_mock):
@@ -429,6 +430,7 @@ async def test_enrichment_cache_and_private_addresses(hass, aioclient_mock):
         entry = await _setup(hass, {**ENTRY_DATA, CONF_GEO_PROVIDER: "ip_api"})
         state = _sensor(hass, entry)
         by_value = {d["value"]: d for d in state.attributes["decisions"]}
+        assert state.attributes["geolocation"] is True
         assert by_value["1.2.3.4"]["country"] == "FR"
         assert by_value["1.2.3.4"]["latitude"] == 48.85
         assert by_value["1.2.3.4"]["as_number"] == 16276
