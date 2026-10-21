@@ -126,9 +126,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Remove the Lovelace resource along with the last entry."""
-    if hass.config_entries.async_entries(DOMAIN):
-        return
-    await JSModuleRegistration(hass).async_unregister()
+    domain_data = hass.data.get(DOMAIN)
+    if domain_data is not None:
+        domain_data.pop(entry.entry_id, None)
+
+    if not hass.config_entries.async_entries(DOMAIN):
+        await JSModuleRegistration(hass).async_unregister()
+        if domain_data is not None:
+            domain_data.pop("frontend_registered", None)
+            if not domain_data:
+                hass.data.pop(DOMAIN, None)
 
 
 async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
